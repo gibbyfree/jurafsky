@@ -1,0 +1,1 @@
+- **tf-idf:** [Figure 14.2](https://web.stanford.edu/~jurafsky/slp3/14.pdf)
