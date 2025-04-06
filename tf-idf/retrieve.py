@@ -5,21 +5,24 @@ import re
 from collections import Counter
 
 
-def get_cnt(documents):
-    """Count up word occurrences for each document in the input directory."""
-    doc_counters = {}
+def get_cnt_string(str):
+    """Count up word occurrences for a single string."""
+    counter = Counter()
     # remove certain punctuation
     regex = re.compile(r"[,\.!?]")
+    words = regex.sub("", str.lower()).split()
+    return Counter(words)
+
+
+def get_per_doc_cnt(documents):
+    """Count up word occurrences for each document in the input directory."""
+    doc_counters = {}
 
     for document in documents:
-        counter = Counter()
         with open(document, "r", encoding="utf-8") as f:
-            words = (
-                regex.sub("", word.lower())
-                for line in f
-                for word in line.strip().split()
-            )
-            counter.update(words)
+            text = f.read()
+            counter = get_cnt_string(text)
+
         # Clean up document name
         doc_name = document.replace("input/", "").replace(".txt", "")
         doc_counters[doc_name] = counter
@@ -27,20 +30,35 @@ def get_cnt(documents):
     return doc_counters
 
 
-def calculate_metrics(doc_counters):
-    """Calculate all metrics for documents in one pass."""
+def calculate_tf_idf(counters, is_query=False, doc_counters=None):
+    """Calculate tf and tf-idf for each term in each document or query.
+
+    Here, tf is calculated as 1 + log10(count) and idf is calculated as log10(N / df),
+    where N is the total number of documents and df is the number of documents containing the term.
+    """
     data = []
 
-    for doc_name, counter in doc_counters.items():
+    # Handle single query counter case
+    if is_query:
+        # For query, wrap the counter in a dict with 'query' as the key
+        items_to_process = {"query": counters}
+        corpus_counters = doc_counters
+        N = len(doc_counters)
+    else:
+        # For documents, use the counters directly
+        items_to_process = counters
+        corpus_counters = counters
+        N = len(counters)
+
+    for doc_name, counter in items_to_process.items():
         for word, count in counter.items():
-            # Calculate tf
+            # Calculate tf using log scaling
             tf = 1 + np.log10(count) if count > 0 else 0
 
-            # Calculate tf-idf
-            idf = np.log10(
-                len(doc_counters)
-                / (0 + sum(1 for c in doc_counters.values() if word in c))
-            )
+            # Calculate idf based on the document corpus
+            df = sum(1 for c in corpus_counters.values() if word in c)
+            # Avoid division by zero if the word doesn't appear in any document
+            idf = np.log10(N / df) if df > 0 else 0
             tf_idf = tf * idf
 
             data.append(
@@ -48,12 +66,21 @@ def calculate_metrics(doc_counters):
                     "document": doc_name,
                     "word": word,
                     "count": count,
-                    "tf": tf,
-                    "tf_idf": tf_idf,
+                    "tf": round(tf, 3),
+                    "tf_idf": round(tf_idf, 3),
                 }
             )
 
     return pd.DataFrame(data)
+
+
+def vector_length(df):
+    """Compute vector length for each document (or query) as the square root of the sum of squares of the tf-idf values."""
+    for doc_name, group in df.groupby("document"):
+        sum_of_squares = np.sum(group["tf_idf"] ** 2)
+        vec_len = np.sqrt(sum_of_squares)
+        df.loc[df["document"] == doc_name, "vector_length"] = round(vec_len, 3)
+    return df
 
 
 if __name__ == "__main__":
@@ -64,13 +91,22 @@ if __name__ == "__main__":
         if os.path.isfile(item_path):
             documents.append(item_path)
 
-    # Get word counts for each document
-    doc_counters = get_cnt(documents)
+    query = "sweet love"
 
-    # Calculate tf, tf-idf
-    results_df = calculate_metrics(doc_counters)
+    # Process document files and query separately
+    doc_counters = get_per_doc_cnt(documents)
+    query_counter = get_cnt_string(query)
 
-    # Pivot for a cleaner matrix view
+    # Calculate tf and tf-idf for documents
+    doc_metrics = calculate_tf_idf(doc_counters, is_query=False)
+
+    # Calculate tf and tf-idf for the query using idf from the documents
+    query_metrics = calculate_tf_idf(
+        query_counter, is_query=True, doc_counters=doc_counters
+    )
+
+    results_df = pd.concat([doc_metrics, query_metrics], ignore_index=True)
+
     pivot_df = results_df.pivot(
         index="document", columns="word", values=["count", "tf", "tf_idf"]
     ).fillna(0)
@@ -80,3 +116,10 @@ if __name__ == "__main__":
 
     print("\nTF-IDF values:")
     print(pivot_df["tf_idf"])
+
+    # Compute vector length for each document (and the query)
+    results_df = vector_length(results_df)
+    vector_lengths_df = results_df[["document", "vector_length"]].drop_duplicates()
+
+    print("\nVector lengths:")
+    print(vector_lengths_df)
