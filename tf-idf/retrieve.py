@@ -91,7 +91,6 @@ def get_cosine_similarity(tfidf_docs, tfidf_query, vector_lengths):
     cosine_similarities = {}
     for doc in tfidf_df.index:
         if doc == "query":
-            print("continued")
             continue
         # Calculate the dot product between the document and query
         dot_product = np.dot(tfidf_df.loc[doc].values, query_vector.values)
