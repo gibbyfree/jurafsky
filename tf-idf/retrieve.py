@@ -83,6 +83,32 @@ def vector_length(df):
     return df
 
 
+def get_cosine_similarity(tfidf_docs, tfidf_query, vector_lengths):
+    """Calculate cosine similarity between document vector and query vector.
+
+    Cosine similarity is defined as the dot product of the two vectors divided by the product of their lengths.
+    """
+    cosine_similarities = {}
+    for doc in tfidf_df.index:
+        if doc == "query":
+            print("continued")
+            continue
+        # Calculate the dot product between the document and query
+        dot_product = np.dot(tfidf_df.loc[doc].values, query_vector.values)
+
+        doc_length = vector_lengths.loc[
+            vector_lengths["document"] == doc, "vector_length"
+        ].values[0]
+        query_length = vector_lengths.loc[
+            vector_lengths["document"] == "query", "vector_length"
+        ].values[0]
+
+        # Calculate cosine similarity
+        similarity = dot_product / (doc_length * query_length)
+        cosine_similarities[doc] = similarity
+    return cosine_similarities
+
+
 if __name__ == "__main__":
     # Collect document paths
     documents = []
@@ -123,3 +149,16 @@ if __name__ == "__main__":
 
     print("\nVector lengths:")
     print(vector_lengths_df)
+
+    # Get each set of tf-idf values
+    tfidf_df = pivot_df["tf_idf"]
+    query_vector = tfidf_df.loc["query"]
+
+    # Initialize a dictionary to store cosine similarities
+    cosine_similarities = get_cosine_similarity(
+        tfidf_df, query_vector, vector_lengths_df
+    )
+
+    print("\nCosine similarities:")
+    for doc, similarity in cosine_similarities.items():
+        print(f"{doc}: {similarity:.3f}")
